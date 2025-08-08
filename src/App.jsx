@@ -1,111 +1,68 @@
 import React, { useState } from "react";
-import ChatInput from "./components/ChatInput";
-import ProbabilityForm from "./components/ProbabilityForm";
-import ResultBox from "./components/ResultBox";
 
-export default function App() {
-  const [messages, setMessages] = useState([]);
-  const [result, setResult] = useState(null);
+function App() {
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  // Gestisce invio frase dalla chat
-  const handleChat = async (message) => {
-    setMessages((prev) => [...prev, { type: "user", text: message }]);
-    // 1. Chiamata backend per NLP
-    const parseResp = await fetch("/api/nlp/parse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: message }),
-    }).then((r) => r.json());
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    setAnswer("");
 
-    if (parseResp.intent === "weather" && parseResp.city) {
-      // 2. Chiamata backend per dati meteo
-      const weatherResp = await fetch(
-        `/api/data/weather?city=${encodeURIComponent(parseResp.city)}&date=${parseResp.date}`
-      ).then((r) => r.json());
-      if (weatherResp.probability != null) {
-        const msg = (
-          <div>
-            <b>
-              Probabilità di pioggia a {weatherResp.city} il {weatherResp.date}: {weatherResp.probability}%.
-            </b>
-            <br />
-            <pre style={{ background: "#e6f7ff", padding: "8px", borderRadius: "4px" }}>
-              {weatherResp.analysis}
-            </pre>
-            <span style={{ fontSize: "0.9em", color: "#666" }}>
-              Fonte: {weatherResp.provider}
-            </span>
-          </div>
-        );
-        setMessages((prev) => [...prev, { type: "assistant", text: msg }]);
-        setResult(msg);
-        return;
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE}/api/ni/parse`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ question }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Errore nella risposta dal server: " + response.status);
       }
+
+      const data = await response.json();
+      setAnswer(data.answer || JSON.stringify(data));
+    } catch (err) {
+      setError("Errore: " + err.message);
+    } finally {
+      setLoading(false);
     }
-
-    if (parseResp.intent === "sports" && parseResp.teams?.length === 2) {
-      // 2. Chiamata backend per dati sportivi
-      const sportsResp = await fetch(
-        `/api/data/sports?home=${encodeURIComponent(parseResp.teams[0])}&away=${encodeURIComponent(parseResp.teams[1])}${parseResp.date ? "&date=" + parseResp.date : ""}`
-      ).then((r) => r.json());
-      if (sportsResp.probability) {
-        const prob = sportsResp.probability;
-        const msg = (
-          <div>
-            <b>
-              {parseResp.teams[0]} - {parseResp.teams[1]}
-              <br />
-              Probabilità: {parseResp.teams[0]} {prob.homeWin}% | Pareggio {prob.draw}% | {parseResp.teams[1]} {prob.awayWin}%
-            </b>
-            <br />
-            <pre style={{ background: "#fffbe6", padding: "8px", borderRadius: "4px" }}>
-              {sportsResp.analysis}
-            </pre>
-            <span style={{ fontSize: "0.9em", color: "#666" }}>
-              Fonte: TheSportsDB + Open-Meteo
-            </span>
-          </div>
-        );
-        setMessages((prev) => [...prev, { type: "assistant", text: msg }]);
-        setResult(msg);
-        return;
-      }
-    }
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        type: "assistant",
-        text:
-          "Non ho trovato la risposta, prova a riformulare la domanda! (Puoi chiedere: 'Quante possibilità di pioggia domani a Roma?' oppure 'Che probabilità ha il Milan di vincere contro l'Inter?')",
-      },
-    ]);
-    setResult(null);
-  };
-
-  // Gestisce invio modulo classico
-  const handleClassic = (msg, computed) => {
-    setMessages((prev) => [
-      ...prev,
-      { type: "user", text: msg },
-      { type: "assistant", text: computed.detail },
-    ]);
-    setResult(computed.detail);
   };
 
   return (
-    <div style={{ maxWidth: 680, margin: "auto", padding: 24 }}>
-      <h1>Probability Assistant</h1>
-      <p>
-        Chiedi probabilità reali o classiche! <br />
-        <i style={{ color: "#0b6e4f" }}>
-          Es: "Quante possibilità di pioggia a Napoli domani?"<br />
-          Es: "Che probabilità ha la Juventus di vincere contro il Milan?"
-        </i>
-      </p>
-      <ChatInput onSend={handleChat} />
-      <ProbabilityForm onCompute={handleClassic} />
-      <ResultBox messages={messages} />
+    <div style={{ maxWidth: 500, margin: "80px auto", padding: 24, border: "1px solid #ccc", borderRadius: 8 }}>
+      <h2>Probability Assistant</h2>
+      <form onSubmit={handleSubmit}>
+        <input
+          type="text"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="Scrivi la tua domanda..."
+          style={{ width: "100%", padding: 8, marginBottom: 12 }}
+          required
+        />
+        <button type="submit" disabled={loading} style={{ width: "100%", padding: 8 }}>
+          {loading ? "Attendi..." : "Invia"}
+        </button>
+      </form>
+      {answer && (
+        <div style={{ marginTop: 24, background: "#f7f7f7", padding: 12, borderRadius: 6 }}>
+          <strong>Risposta:</strong>
+          <div>{answer}</div>
+        </div>
+      )}
+      {error && (
+        <div style={{ marginTop: 24, color: "red" }}>
+          {error}
+        </div>
+      )}
     </div>
   );
 }
+
+export default App;
